@@ -37,15 +37,6 @@ By default, miditester opens the first MIDI port, sends all test messages, and u
 
     ./miditester
 
-To choose a specific MIDI port, use the `-l` or `--list` flag which prints the available ports:
-
-~~~
-./miditester --list
-available ports:
-  0: IAC Driver Pure Data In
-  1: IAC Driver Pure Data Out
-~~~
-
 All available options are listed in the help output using the `-h` or `--help` flags:
 
 ~~~
@@ -68,3 +59,16 @@ TEST:
   running    Running status tests
   sysex      Sysex tests
 ~~~
+
+For example, to choose a specific MIDI port, first use the `-l` or `--list` flag which prints the available ports:
+
+~~~
+./miditester --list
+available ports:
+  0: IAC Driver Pure Data In
+  1: IAC Driver Pure Data Out
+~~~
+
+You can then specify the port number with the `-p` or `--port` flags:
+
+    ./miditester --port 1
