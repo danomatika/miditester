@@ -72,3 +72,7 @@ available ports:
 You can then specify the port number with the `-p` or `--port` flags:
 
     ./miditester --port 1
+
+To choose a specific test set, add the optional test argument:
+
+    ./miditester --port 1 realtime
