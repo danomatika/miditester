@@ -24,6 +24,8 @@ Build requirements:
 
 For building on Windows, [Msys2](http://www.msys2.org) can provide the necessary shell environment and compiler chain.
 
+On Linux, you will need the development files for ALSA.
+
 Build miditester using make:
 
     make
