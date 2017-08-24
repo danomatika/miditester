@@ -29,10 +29,10 @@ CXXFLAGS += -I./src -std=c++11 -O3
 .PHONY: clean clobber
 
 $(TARGET): ${SRC_FILES:.cpp=.o} $(LIBPD)
-    g++ -o $(TARGET) $^ $(AUDIO_API)
+	g++ -o $(TARGET) $^ $(AUDIO_API)
 
 clean:
-    rm -f src/*.o
+	rm -f src/*.o
 
 clobber: clean
-    rm -f $(TARGET)
+	rm -f $(TARGET)
