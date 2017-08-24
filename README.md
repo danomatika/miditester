@@ -45,19 +45,21 @@ Usage: miditester [OPTIONS] [TEST]
   a utility program which sends MIDI bytes
 
 Options:
-  -p,--port  MIDI port to send to 0-n (default 0)
-  -c,--chan  MIDI channel to send to 1-16 (default 1)
-  -s,--speed Millis between messages (default 500)
-  -l,--list  List available MIDI ports and exit
-  -h,--help  This help print
+  -p,--port    MIDI port to send to 0-n (default 0)
+  -c,--chan    MIDI channel to send to 1-16 (default 1)
+  -s,--speed   Millis between messages (default 500)
+  -d,--decimal Print decimal byte values instead of hex
+  -n,--name    Print status byte name instead of value
+  -l,--list    List available MIDI ports and exit
+  -h,--help    This help print
 
 TEST:
-  all        Run all tests below (default)
-  channel    Channel messages  80 - E0
-  system     System messages   F0 - F7
-  realtime   Realtime messages F8 - FF
-  running    Running status tests
-  sysex      Sysex tests
+  all      Run all tests below (default)
+  channel  Channel messages  80 - E0
+  system   System messages   F0 - F7
+  realtime Realtime messages F8 - FF
+  running  Running status tests
+  sysex    Sysex tests
 ~~~
 
 For example, to choose a specific MIDI port, first use the `-l` or `--list` flag which prints the available ports:

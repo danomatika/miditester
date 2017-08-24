@@ -42,7 +42,7 @@
 #define MIDI_SYSEXEND       0xF7 // 247, 0
  
 // realtime message
-#define MIDI_TIMECLOCK      0xF8 // 248, 0
+#define MIDI_CLOCK          0xF8 // 248, 0
 //      MIDI_RESERVED3      0xF9 // 249, ?
 #define MIDI_START          0xFA // 250, 0
 #define MIDI_CONTINUE       0xFB // 251, 0
@@ -52,24 +52,26 @@
 #define MIDI_SYSTEMRESET    0xFF // 255, 0
 
 static const char* HELP =
-"Usage: miditester [OPTIONS] [TEST]\n"                    \
-"\n"                                                      \
-"  a utility program which sends MIDI bytes\n"            \
-"\n"                                                      \
-"Options:\n"                                              \
-"  -p,--port  MIDI port to send to 0-n (default 0)\n"     \
-"  -c,--chan  MIDI channel to send to 1-16 (default 1)\n" \
-"  -s,--speed Millis between messages (default 500)\n"    \
-"  -l,--list  List available MIDI ports and exit\n"       \
-"  -h,--help  This help print\n"                          \
-"\n"                                                      \
-"TEST:\n"                                                 \
-"  all        Run all tests below (default)\n"            \
-"  channel    Channel messages  80 - E0\n"                \
-"  system     System messages   F0 - F7\n"                \
-"  realtime   Realtime messages F8 - FF\n"                \
-"  running    Running status tests\n"                     \
-"  sysex      Sysex tests\n"                              \
+"Usage: miditester [OPTIONS] [TEST]\n"                      \
+"\n"                                                        \
+"  a utility program which sends MIDI bytes\n"              \
+"\n"                                                        \
+"Options:\n"                                                \
+"  -p,--port    MIDI port to send to 0-n (default 0)\n"     \
+"  -c,--chan    MIDI channel to send to 1-16 (default 1)\n" \
+"  -s,--speed   Millis between messages (default 500)\n"    \
+"  -d,--decimal Print decimal byte values instead of hex\n" \
+"  -n,--name    Print status byte name instead of value\n"  \
+"  -l,--list    List available MIDI ports and exit\n"       \
+"  -h,--help    This help print\n"                          \
+"\n"                                                        \
+"TEST:\n"                                                   \
+"  all      Run all tests below (default)\n"                \
+"  channel  Channel messages  80 - E0\n"                    \
+"  system   System messages   F0 - F7\n"                    \
+"  realtime Realtime messages F8 - FF\n"                    \
+"  running  Running status tests\n"                         \
+"  sysex    Sysex tests\n"                                  \
 ;
 
 // convenience types
@@ -94,6 +96,9 @@ void realtimeMessages(TestQueue &queue, int channel=0);
 void runningStatus(TestQueue &queue, int channel=0);
 void sysex(TestQueue &queue, int channel=0);
 
+// get string name for status byte
+std::string statusByteName(unsigned char status);
+
 // RtMidi error callback
 void errorcallback(RtMidiError::Type type, const std::string &errorText, void *userData);
 
@@ -117,6 +122,8 @@ int main(int argc, char *argv[]) {
     int port = 0;
     int channel = 1;
     int speed = 500;
+    bool hex = true;
+    bool name = false;
     bool list = false;
     std::string option = "";
     for(int i = 1; i < argc; ++i) {
@@ -161,6 +168,12 @@ int main(int argc, char *argv[]) {
                 std::cout << HELP << std::endl;
                 return 0;
             }
+            else if(arg == "-d" || arg == "--decimal") {
+                hex = false;
+            }
+            else if(arg == "-n" || arg == "--name") {
+                name = true;
+            }
             else if(arg == "-l" || arg == "--list") {
                 list = true;
                 break;
@@ -196,12 +209,17 @@ int main(int argc, char *argv[]) {
     std::cout << "opened " << midiout->getPortName(port) << std::endl;
     
     // prepare message queue
-    bool alltests = (tests == "all");
-    if(alltests || tests == "channel")  channelMessages(queue, channel);
-    if(alltests || tests == "system")   systemMessages(queue, channel);
-    if(alltests || tests == "realtime") realtimeMessages(queue, channel);
-    if(alltests || tests == "running")  runningStatus(queue, channel);
-    if(alltests || tests == "sysex")   sysex(queue, channel);
+    bool allTests = (tests == "all");
+    bool addedTest = false;
+    if(allTests || tests == "channel") channelMessages(queue, channel), addedTest = true;
+    if(allTests || tests == "system")   systemMessages(queue, channel), addedTest = true;
+    if(allTests || tests == "realtime") realtimeMessages(queue, channel), addedTest = true;
+    if(allTests || tests == "running")  runningStatus(queue, channel), addedTest = true;
+    if(allTests || tests == "sysex")    sysex(queue, channel), addedTest = true;
+    if(!addedTest) {
+        std::cout << "unknown test: " << tests << std::endl;
+        return 1;
+    }
 
     // send messages
     std::chrono::milliseconds sleepMS(speed);
@@ -209,10 +227,20 @@ int main(int argc, char *argv[]) {
         std::cout << test.name << " test" << std::endl;
         for(auto &message : test.messages) {
             std::cout << "  sending ";
+            if(hex) {
+                std::cout << std::hex << std::uppercase;
+            }
             for(unsigned int byte : message) {
-                std::cout << std::hex << std::uppercase
-                          << byte
-                          << std::nouppercase << std::dec << " ";
+                if(name && (byte & 0x80)) {
+                    std::cout << statusByteName(byte);
+                }
+                else {
+                    std::cout << byte;
+                }
+                std::cout << " ";
+            }
+            if(hex) {
+                std::cout << std::nouppercase << std::dec; 
             }
             std::cout << std::endl;
             midiout->sendMessage(&message);
@@ -306,13 +334,14 @@ void realtimeMessages(TestQueue &queue, int channel) {
     TestSet set;
     set.name = "realtime";
     set.messages = {
-        {MIDI_TIMECLOCK},
+        {MIDI_CLOCK},
         {MIDI_START},
         {MIDI_CONTINUE},
         {MIDI_STOP},
         {MIDI_ACTIVESENSING},
         {MIDI_SYSTEMRESET}
     };
+    queue.push_back(set);
 }
 
 void runningStatus(TestQueue &queue, int channel) {
@@ -333,17 +362,17 @@ void runningStatus(TestQueue &queue, int channel) {
         {67, 64},
         {MIDI_CONTINUE},
         {68, 64},
-        {MIDI_TIMECLOCK},
+        {MIDI_CLOCK},
 
         // note off
         {(unsigned char)(MIDI_NOTEOFF + channel), 64, 0},
 
         // note offs without status byte
-        {64, 64},
-        {65, 64},
-        {66, 64},
-        {67, 64},
-        {68, 64}
+        {64, 0},
+        {65, 0},
+        {66, 0},
+        {67, 0},
+        {68, 0}
     };
     queue.push_back(set);
 }
@@ -354,7 +383,7 @@ void sysex(TestQueue &queue, int channel) {
     set.messages = {
 
         // test realtime messages within sysex
-        {MIDI_SYSEX, 1, 2, MIDI_STOP, 3, 4, MIDI_TIMECLOCK, 5, 6, MIDI_SYSEXEND},
+        {MIDI_SYSEX, 1, 2, MIDI_STOP, 3, 4, MIDI_CLOCK, 5, 6, MIDI_SYSEXEND},
 
         // test sysex without sysex end byte
         // not all of these bytes may go through as MIDI
@@ -365,6 +394,31 @@ void sysex(TestQueue &queue, int channel) {
         {(unsigned char)(MIDI_NOTEON + channel), 64, 64}
     };
     queue.push_back(set);
+}
+
+std::string statusByteName(unsigned char status) {
+    switch(status) {
+        case MIDI_NOTEOFF:        return "NOTEOFF";
+        case MIDI_NOTEON:         return "NOTEON";
+        case MIDI_POLYAFTERTOUCH: return "POLYAFTERTOUCH";
+        case MIDI_CONTROLCHANGE:  return "CONTROLCHANGE";
+        case MIDI_PROGRAMCHANGE:  return "PROGRAMCHANGE";
+        case MIDI_AFTERTOUCH:     return "AFTERTOUCH";
+        case MIDI_PITCHBEND:      return "PITCHBEND";
+        case MIDI_SYSEX:          return "SYSEX";
+        case MIDI_TIMECODE:       return "TIMECODE";
+        case MIDI_SONGPOS:        return "SONGPOS";
+        case MIDI_SONGSELECT:     return "SONGSELECT";
+        case MIDI_TUNEREQUEST:    return "TUNEREQUEST";
+        case MIDI_SYSEXEND:       return "SYSEXEND";
+        case MIDI_CLOCK:          return "CLOCK";
+        case MIDI_START:          return "START";
+        case MIDI_CONTINUE:       return "CONTINUE";
+        case MIDI_STOP:           return "STOP";
+        case MIDI_ACTIVESENSING:  return "ACTIVESENSE";
+        case MIDI_SYSTEMRESET:    return "SYSTEMRESET";
+        default:                  return "UNKNOWN";
+    }
 }
 
 void errorcallback(RtMidiError::Type type, const std::string &errorText, void *userData) {
