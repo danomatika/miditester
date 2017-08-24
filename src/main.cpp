@@ -154,7 +154,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // current option
+        // current argument
         if(arg[0] == '-') {
             // option
             if(arg == "-h" || arg == "--help") {
@@ -170,6 +170,7 @@ int main(int argc, char *argv[]) {
             }
         }
         else {
+            // argument
             tests = arg;
         }      
     }
@@ -353,9 +354,9 @@ void sysex(TestQueue &queue, int channel) {
     set.messages = {
 
         // test realtime messages within sysex
-        {MIDI_SYSEX, 5, MIDI_STOP, 6, MIDI_SYSEXEND},
+        {MIDI_SYSEX, 1, 2, MIDI_STOP, 3, 4, MIDI_TIMECLOCK, 5, 6, MIDI_SYSEXEND},
 
-        // test sysex without end sysex end byte
+        // test sysex without sysex end byte
         // not all of these bytes may go through as MIDI
         // backends handle this in different ways
         //{MIDI_SYSEX, 7, 8, 9, 10, 11, 12, 13, 14},
