@@ -95,6 +95,7 @@ void realtimeMessages(TestQueue &queue, int channel=0);
 // add specfic message type tests to the queue
 void runningStatus(TestQueue &queue, int channel=0);
 void sysex(TestQueue &queue, int channel=0);
+void timecode(TestQueue &queue);
 
 // get string name for status byte
 std::string statusByteName(unsigned char status);
@@ -216,6 +217,7 @@ int main(int argc, char *argv[]) {
     if(allTests || tests == "realtime") realtimeMessages(queue, channel), addedTest = true;
     if(allTests || tests == "running")  runningStatus(queue, channel), addedTest = true;
     if(allTests || tests == "sysex")    sysex(queue, channel), addedTest = true;
+    if(allTests || tests == "timecode") timecode(queue), addedTest = true;
     if(!addedTest) {
         std::cout << "unknown test: " << tests << std::endl;
         return 1;
@@ -307,19 +309,27 @@ void systemMessages(TestQueue &queue, int channel) {
     set.name = "system";
     set.messages = {
 
+        // sysex start, data bytes, and end
         {MIDI_SYSEX, 1, 2, 3, 4, MIDI_SYSEXEND},
 
-        {
-            MIDI_TIMECODE,
-            10  // value
-        },
+        // MTC Quarter Frame: 01:02:03:04 @ 25 fps (see timecode() function)
+        {MIDI_TIMECODE, 0x02}, // note: receiver adds 2 frames
+        {MIDI_TIMECODE, 0x10},
+        {MIDI_TIMECODE, 0x23},
+        {MIDI_TIMECODE, 0x30},
+        {MIDI_TIMECODE, 0x42},
+        {MIDI_TIMECODE, 0x50},
+        {MIDI_TIMECODE, 0x61},
+        {MIDI_TIMECODE, 0x72},
 
+        // 14 bit song pos: 0x2030 = 8240
         {
             MIDI_SONGPOS,
             20, // value 1
             30  // value 2
         },
 
+        // 7 bit song number
         {
             MIDI_SONGSELECT,
             64  // song
@@ -392,6 +402,70 @@ void sysex(TestQueue &queue, int channel) {
 
         // next status message should work fine
         {(unsigned char)(MIDI_NOTEON + channel), 64, 64}
+    };
+    queue.push_back(set);
+}
+
+void timecode(TestQueue &queue) {
+    TestSet set;
+    set.name = "timecode";
+    set.messages = {
+
+        // MIDI Time Code is more complicated then other messages:
+        // http://www.recordingblogs.com/sa/Wiki/topic/MIDI-Quarter-Frame-message
+        //
+        // a MTC timestamp consists of 5 components:
+        //
+        //     hours:minutes:seconds:frames @ frames per second
+        //
+        // the first 3 components are sent as 2 separate MIDI messages
+        //
+        // you need a full 8 messages before you have the full time code value,
+        // each message consists of 1 data byte that encodes 2 values:
+        //
+        //   * low nibble: value
+        //   * high nibble: component and byte position within the final vale
+        //
+        // the hours portion is sent as a single nibble and the second data byte
+        // is used to specify the frames per second:
+        //
+        //   * 0x00: 24 fps
+        //   * 0x01: 25 fps
+        //   * 0x02: 29.97 fps
+        //   * 0x03: 30 fps
+        //
+        // the following test message sends: 01:02:03:04 @ 25 fps
+
+        // 1 byte from 2 nibble messages
+        // frames (5 bit): 0x02 = 2 frames (+ 2 added by receiver)
+        {MIDI_TIMECODE, 0x02}, // 0x1X low frame nibble
+        {MIDI_TIMECODE, 0x10}, // 0x0X high frame nibble
+
+        // seconds (6 bit): 0x03 = 3 seconds
+        {MIDI_TIMECODE, 0x23}, // 0x2X low second nibble
+        {MIDI_TIMECODE, 0x30}, // 0x3X high second nibble
+
+        // minutes (6 bit): 0x02 = 2 minutes
+        {MIDI_TIMECODE, 0x42}, // 0x4X low minute nibble
+        {MIDI_TIMECODE, 0x50}, // 0x5X high minute nibble
+
+        // hours (5 bit): 0x01 = 1 hour, fps: b01 = 1 = 25 fps
+        {MIDI_TIMECODE, 0x61}, // 0x6X hour low nibble
+        {MIDI_TIMECODE, 0x72}, // 0x7X hour high bit & fps value: 0ffh
+
+        // MTC Full Frame message: 06:07:08:09 @ 30 fps
+        {
+            MIDI_SYSEX,
+            0x7F, // all makes
+            0x7F, // all channels
+            0x01, // MTC message
+            0x01, // MTC Full Frame message
+            0x36, // hour (5 bit) and fps (2 middle bits on high nibble)
+            0x07, // minute (6 bit)
+            0x08, // second (6 bit)
+            0x09, // frame (5 bit)
+            MIDI_SYSEXEND
+        }
     };
     queue.push_back(set);
 }
