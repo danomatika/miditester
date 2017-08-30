@@ -72,6 +72,7 @@ static const char* HELP =
 "  realtime Realtime messages F8 - FF\n"                    \
 "  running  Running status tests\n"                         \
 "  sysex    Sysex tests\n"                                  \
+"  timecode Timecode tests: quarter & full frame\n"         \
 ;
 
 // convenience types

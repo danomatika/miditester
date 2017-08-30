@@ -60,6 +60,7 @@ TEST:
   realtime Realtime messages F8 - FF
   running  Running status tests
   sysex    Sysex tests
+  timecode Timecode tests: quarter & full frame
 ~~~
 
 For example, to choose a specific MIDI port, first use the `-l` or `--list` flag which prints the available ports:
