@@ -15,11 +15,12 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
-//
+
 #include <iostream>
 #include <cstdlib>
 #include <chrono>
 #include <thread>
+#include <signal.h>
 #include "RtMidi.h"
 
 // channel voice message     dec value, # data bytes
@@ -54,19 +55,21 @@
 static const char* HELP =
 "Usage: miditester [OPTIONS] [TEST]\n"                      \
 "\n"                                                        \
-"  a utility program which sends MIDI bytes\n"              \
+"  a utility program which sends and receives MIDI bytes\n" \
 "\n"                                                        \
-"Options:\n"                                                \
-"  -p,--port    MIDI port to send to 0-n (default 0)\n"     \
-"  -c,--chan    MIDI channel to send to 1-16 (default 1)\n" \
-"  -s,--speed   Millis between messages (default 500)\n"    \
+"Options:\n\n"                                              \
+"  -p,--port    MIDI port to use 0-n, default 0\n"          \
+"  -c,--chan    MIDI channel to send to 1-16, default 1\n"  \
+"  -s,--speed   Millis between messages,\n"                 \
+"               defaults: input 40, output 500\n"           \
 "  -d,--decimal Print decimal byte values instead of hex\n" \
 "  -n,--name    Print status byte name instead of value\n"  \
 "  -l,--list    List available MIDI ports and exit\n"       \
 "  -h,--help    This help print\n"                          \
 "\n"                                                        \
-"TEST:\n"                                                   \
-"  all      Run all tests below (default)\n"                \
+"TEST:\n\n"                                                 \
+"  input    Listen & print MIDI messages\n\n"               \
+"  all      Run all output tests below, default\n\n"        \
 "  channel  Channel messages  80 - E0\n"                    \
 "  system   System messages   F0 - F7\n"                    \
 "  realtime Realtime messages F8 - FF\n"                    \
@@ -98,32 +101,33 @@ void runningStatus(TestQueue &queue, int channel=0);
 void sysex(TestQueue &queue, int channel=0);
 void timecode(TestQueue &queue);
 
+// print midi byte message to the console
+void printMessage(std::vector<unsigned char> &message, bool hex, bool name);
+
 // get string name for status byte
 std::string statusByteName(unsigned char status);
 
 // RtMidi error callback
-void errorcallback(RtMidiError::Type type, const std::string &errorText, void *userData);
+void midiError(RtMidiError::Type type, const std::string &errorText, void *userData);
+
+// process signal handler
+void signalExit(int signal);
+
+// input loop control
+int run = true;
 
 // actual program
 int main(int argc, char *argv[]) {
-
+    RtMidiIn *midiin = new RtMidiIn();
     RtMidiOut *midiout = new RtMidiOut();
-    midiout->setErrorCallback(errorcallback);
-    TestQueue queue;
-
-    // check if there is anything to send to
-    unsigned int numPorts = midiout->getPortCount();
-    if(numPorts == 0) {
-        std::cout << "no ports available" << std::endl;
-        delete midiout;
-        return 0;
-    }
+    midiin->setErrorCallback(midiError);
+    midiout->setErrorCallback(midiError);
 
     // parse commandline
     std::string tests = "all";
     int port = 0;
     int channel = 1;
-    int speed = 500;
+    int speed = -1;
     bool hex = true;
     bool name = false;
     bool list = false;
@@ -192,10 +196,25 @@ int main(int argc, char *argv[]) {
 
     // list devices and exit?
     if(list) {
-        std::cout << "available ports:" << std::endl;
-        for(int i = 0; i < numPorts; ++i) {
-          std::cout << "  " << i << ": "
-                    << midiout->getPortName(i) << std::endl;
+        if(midiin->getPortCount() > 0) {
+            std::cout << "input ports:" << std::endl;
+            for(int i = 0; i < midiin->getPortCount(); ++i) {
+              std::cout << "  " << i << ": "
+                        << midiin->getPortName(i) << std::endl;
+            }
+        }
+        else {
+            std::cout << "no input ports" << std::endl;
+        }
+        if(midiin->getPortCount() > 0) {
+            std::cout << "output ports:" << std::endl;
+            for(int i = 0; i < midiin->getPortCount(); ++i) {
+              std::cout << "  " << i << ": "
+                        << midiout->getPortName(i) << std::endl;
+            }
+        }
+        else {
+            std::cout << "no output ports" << std::endl;
         }
         return 0;
     }
@@ -206,55 +225,102 @@ int main(int argc, char *argv[]) {
               << "speed: " << speed << " ms" << std::endl;
     channel--; // decrement from human-readable index
 
-    // try opening given port
-    midiout->openPort(port);
-    std::cout << "opened " << midiout->getPortName(port) << std::endl;
-    
-    // prepare message queue
-    bool allTests = (tests == "all");
-    bool addedTest = false;
-    if(allTests || tests == "channel") channelMessages(queue, channel), addedTest = true;
-    if(allTests || tests == "system")   systemMessages(queue, channel), addedTest = true;
-    if(allTests || tests == "realtime") realtimeMessages(queue, channel), addedTest = true;
-    if(allTests || tests == "running")  runningStatus(queue, channel), addedTest = true;
-    if(allTests || tests == "sysex")    sysex(queue, channel), addedTest = true;
-    if(allTests || tests == "timecode") timecode(queue), addedTest = true;
-    if(!addedTest) {
-        std::cout << "unknown test: " << tests << std::endl;
-        return 1;
-    }
+    // set signal handling
+    signal(SIGTERM, signalExit); // terminate
+    signal(SIGQUIT, signalExit); // quit
+    signal(SIGINT,  signalExit); // interrupt
 
-    // send messages
-    std::chrono::milliseconds sleepMS(speed);
-    for(auto &test : queue) {
-        std::cout << test.name << " test" << std::endl;
-        for(auto &message : test.messages) {
-            std::cout << "  sending ";
-            if(hex) {
-                std::cout << std::hex << std::uppercase;
+    if(tests == "input") {
+        if(speed < 0) speed = 40;
+
+        // check if there is anything to receive from
+        unsigned int numPorts = midiin->getPortCount();
+        if(numPorts == 0) {
+            std::cout << "no inpu ports available" << std::endl;
+            delete midiin;
+            delete midiout;
+            return 0;
+        }
+
+        // try opening given port
+        midiin->openPort(port);
+        std::cout << "opened " << midiin->getPortName(port) << std::endl;
+
+        // disable message filtering
+        midiin->ignoreTypes(false, false, false);
+
+        // listen for new messages until loop is stopped
+        std::cout << "input test" << std::endl;
+        std::cout << "started listening" << std::endl;
+        std::chrono::milliseconds sleepMS(20);
+        std::vector<unsigned char> message;
+        while(run) {
+            if(midiin->getMessage(&message)) {
+                printMessage(message, hex, name);
+                message.clear();
             }
-            for(unsigned int byte : message) {
-                if(name && (byte & 0x80)) {
-                    std::cout << statusByteName(byte);
-                }
-                else {
-                    std::cout << byte;
-                }
-                std::cout << " ";
-            }
-            if(hex) {
-                std::cout << std::nouppercase << std::dec; 
-            }
-            std::cout << std::endl;
-            midiout->sendMessage(&message);
             std::this_thread::sleep_for(sleepMS);
         }
+        std::cout << "stopped listening" << std::endl;
+
+        // done
+        midiin->closePort();
+    }
+    else {
+        TestQueue queue;
+        if(speed < 0) speed = 500;
+
+        // check if there is anything to send to
+        unsigned int numPorts = midiout->getPortCount();
+        if(numPorts == 0) {
+            std::cout << "no output ports available" << std::endl;
+            delete midiin;
+            delete midiout;
+            return 0;
+        }
+
+        // try opening given port
+        midiout->openPort(port);
+        std::cout << "opened " << midiout->getPortName(port) << std::endl;
+        
+        // prepare message queue
+        bool allTests = (tests == "all");
+        bool addedTest = false;
+        if(allTests || tests == "channel")  channelMessages(queue, channel), addedTest = true;
+        if(allTests || tests == "system")   systemMessages(queue, channel), addedTest = true;
+        if(allTests || tests == "realtime") realtimeMessages(queue, channel), addedTest = true;
+        if(allTests || tests == "running")  runningStatus(queue, channel), addedTest = true;
+        if(allTests || tests == "sysex")    sysex(queue, channel), addedTest = true;
+        if(allTests || tests == "timecode") timecode(queue), addedTest = true;
+        if(!addedTest) {
+            std::cout << "unknown test: " << tests << std::endl;
+            return 1;
+        }
+
+        // send messages
+        std::chrono::milliseconds sleepMS(speed);
+        for(auto &test : queue) {
+            std::cout << test.name << " test" << std::endl;
+            for(auto &message : test.messages) {
+                std::cout << "  sending ";
+                printMessage(message, hex, name);
+                midiout->sendMessage(&message);
+                std::this_thread::sleep_for(sleepMS);
+            }
+        }
+
+        // done
+        midiout->closePort();
     }
 
     // cleanup
-    midiout->closePort();
+    delete midiin;
     delete midiout;
     return 0;
+}
+
+void signalExit(int signal) {
+    run = false;
 }
 
 void channelMessages(TestQueue &queue, int channel) {
@@ -265,40 +331,40 @@ void channelMessages(TestQueue &queue, int channel) {
         {
             (unsigned char)(MIDI_NOTEON + channel),
             64, // note
-            64  // velocity
+            65  // velocity
         },
         
         {
             (unsigned char)(MIDI_NOTEOFF + channel),
-            64, // note
+            66, // note
             0   // velocity
         },
 
         {
             (unsigned char)(MIDI_POLYAFTERTOUCH + channel),
-            64, // note
-            64  // value
+            67, // note
+            68  // value
         },
 
         {
             (unsigned char)(MIDI_CONTROLCHANGE + channel),
-            64, // control
-            64  // value
+            69, // control
+            70  // value
         },
 
         {
             (unsigned char)(MIDI_PROGRAMCHANGE + channel),
-            64  // program
+            71  // program
         },
 
         {
             (unsigned char)(MIDI_AFTERTOUCH + channel),
-            64  // value
+            72  // value
         },
 
         {
             (unsigned char)(MIDI_PITCHBEND + channel),
-            64, // value lsb
+            73, // value lsb
             0   // value msb
         }
     };
@@ -311,7 +377,7 @@ void systemMessages(TestQueue &queue, int channel) {
     set.messages = {
 
         // sysex start, data bytes, and end
-        {MIDI_SYSEX, 1, 2, 3, 4, MIDI_SYSEXEND},
+        {MIDI_SYSEX, 1, 2, 3, 4, 5, MIDI_SYSEXEND},
 
         // MTC Quarter Frame: 01:02:03:04 @ 25 fps (see timecode() function)
         {MIDI_TIMECODE, 0x02}, // note: receiver adds 2 frames
@@ -471,7 +537,26 @@ void timecode(TestQueue &queue) {
     queue.push_back(set);
 }
 
+// print MIDI mesage buffer to the console,
+// set hex to true to print byte values in hexidecimal
+// set name to true to print the name of the status bytes
+void printMessage(std::vector<unsigned char> &message, bool hex, bool name) {
+    if(message.size() < 1) {return;}
+    if(hex) {std::cout << std::hex << std::uppercase;}
+    for(int byte : message) {
+        if(name && (byte & 0x80)) {
+            std::cout << statusByteName(byte) << " ";
+        }
+        else {
+            std::cout << byte << " ";
+        }
+    }
+    if(hex) {std::cout << std::nouppercase << std::dec; }
+    std::cout << std::endl;
+}
+
 std::string statusByteName(unsigned char status) {
+    if(status < MIDI_SYSEX) status = status & 0xF0;
     switch(status) {
         case MIDI_NOTEOFF:        return "NOTEOFF";
         case MIDI_NOTEON:         return "NOTEON";
@@ -496,7 +581,7 @@ std::string statusByteName(unsigned char status) {
     }
 }
 
-void errorcallback(RtMidiError::Type type, const std::string &errorText, void *userData) {
+void midiError(RtMidiError::Type type, const std::string &errorText, void *userData) {
     std::cout << "RtMidi error: " << errorText << std::endl;
     std::exit(1);
 }
