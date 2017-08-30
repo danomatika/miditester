@@ -1,14 +1,14 @@
 miditester
 ==========
 
-a utility program which sends MIDI bytes 
+a utility program which sends and receives MIDI bytes 
 
 Copyright (C) 2017 Dan Wilcox <danomatika@gmail.com>
 
 Description
 -----------
 
-When working with MIDI software projects, it's often useful to be able to generate test MIDI messages to make sure MIDI input handling is working as expected. This small commandline utility provides this functionality by sending a series of test messages based on the required message type.
+When working with MIDI software projects, it's often useful to be able to generate and print incoming MIDI messages to make sure MIDI input handling is working as expected. This small commandline utility provides this functionality by either listening for messages or sending a series of test messages based on the required message type.
 
 The project utilizes [RtMidi library](http://www.music.mcgill.ca/~gary/rtmidi/) for MIDI communication.
 
@@ -33,28 +33,38 @@ Build miditester using make:
 Usage
 -----
 
-By default, miditester opens the first MIDI port, sends all test messages, and uses channel 1 for channel-based messages.
+By default, miditester opens the first MIDI port, sends all output test messages, and uses channel 1 for channel-based messages.
 
     ./miditester
+
+To listen for incoming messages, use the `input` test argument:
+
+    ./miditester input
 
 All available options are listed in the help output using the `-h` or `--help` flags:
 
 ~~~
 Usage: miditester [OPTIONS] [TEST]
 
-  a utility program which sends MIDI bytes
+  a utility program which sends and receives MIDI bytes
 
 Options:
-  -p,--port    MIDI port to send to 0-n (default 0)
-  -c,--chan    MIDI channel to send to 1-16 (default 1)
-  -s,--speed   Millis between messages (default 500)
+
+  -p,--port    MIDI port to use 0-n, default 0
+  -c,--chan    MIDI channel to send to 1-16, default 1
+  -s,--speed   Millis between messages,
+               defaults: input 40, output 500
   -d,--decimal Print decimal byte values instead of hex
   -n,--name    Print status byte name instead of value
   -l,--list    List available MIDI ports and exit
   -h,--help    This help print
 
 TEST:
-  all      Run all tests below (default)
+
+  input    Listen & print MIDI messages
+
+  all      Run all output tests below, default
+
   channel  Channel messages  80 - E0
   system   System messages   F0 - F7
   realtime Realtime messages F8 - FF
@@ -67,7 +77,10 @@ For example, to choose a specific MIDI port, first use the `-l` or `--list` flag
 
 ~~~
 ./miditester --list
-available ports:
+input ports:
+  0: IAC Driver Pure Data In
+  1: IAC Driver Pure Data Out
+output ports:
   0: IAC Driver Pure Data In
   1: IAC Driver Pure Data Out
 ~~~
