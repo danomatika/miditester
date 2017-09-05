@@ -219,10 +219,6 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    std::cout << "running tests: " << tests << std::endl
-              << "port: " << port << std::endl
-              << "channel: " << channel << std::endl
-              << "speed: " << speed << " ms" << std::endl;
     channel--; // decrement from human-readable index
 
     // set signal handling
@@ -233,10 +229,14 @@ int main(int argc, char *argv[]) {
     if(tests == "input") {
         if(speed < 0) speed = 40;
 
+        std::cout << "running tests: " << tests << std::endl
+          << "port: " << port << std::endl
+          << "speed: " << speed << " ms" << std::endl;
+
         // check if there is anything to receive from
         unsigned int numPorts = midiin->getPortCount();
         if(numPorts == 0) {
-            std::cout << "no inpu ports available" << std::endl;
+            std::cout << "no input ports available" << std::endl;
             delete midiin;
             delete midiout;
             return 0;
@@ -269,6 +269,11 @@ int main(int argc, char *argv[]) {
     else {
         TestQueue queue;
         if(speed < 0) speed = 500;
+
+        std::cout << "running tests: " << tests << std::endl
+          << "port: " << port << std::endl
+          << "channel: " << channel << std::endl
+          << "speed: " << speed << " ms" << std::endl;
 
         // check if there is anything to send to
         unsigned int numPorts = midiout->getPortCount();
@@ -445,7 +450,6 @@ void runningStatus(TestQueue &queue, int channel) {
         {(unsigned char)(MIDI_NOTEOFF + channel), 64, 0},
 
         // note offs without status byte
-        {64, 0},
         {65, 0},
         {66, 0},
         {67, 0},
