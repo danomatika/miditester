@@ -305,8 +305,10 @@ int main(int argc, char *argv[]) {
         // send messages
         std::chrono::milliseconds sleepMS(speed);
         for(auto &test : queue) {
+            if(!run) {break;}
             std::cout << test.name << " test" << std::endl;
             for(auto &message : test.messages) {
+                if(!run) {break;}
                 std::cout << "  sending ";
                 printMessage(message, hex, name);
                 midiout->sendMessage(&message);
