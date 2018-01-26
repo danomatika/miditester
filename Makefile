@@ -16,7 +16,7 @@ else
     else  # assume Linux
         PLATFORM = linux
         CXXFLAGS = -D__LINUX_ALSA__
-        AUDIO_API = -lamidi -pthread
+        AUDIO_API = -lasound -pthread
         # alsa flags: -D__UNIX_JACK__ -ljack
     endif
 endif
